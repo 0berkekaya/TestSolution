@@ -1,4 +1,7 @@
-﻿namespace CoreLibrary
+﻿using System.Diagnostics;
+using System.Reflection;
+
+namespace CoreLibrary
 {
     public static class TryCatch
     {
@@ -9,26 +12,26 @@
         /// <param name="methodFuncT">Çalıştırılacak işlev.</param>
         /// <param name="tryCatchConfiguration">Try-Catch ayarları (isteğe bağlı).</param>
         /// <returns>İşlem bilgisi.</returns>
-        public static TransactionInformation<T> Run<T>(Func<T> methodFuncT, TryCatchConfiguration? tryCatchConfiguration = null)
+        public static Transaction<T> Run<T>(Func<T> methodFuncT, TryCatchConfiguration? tryCatchConfiguration = null)
         {
             // Try-Catch ayarlarını varsayılan değerle başlat
             tryCatchConfiguration ??= new TryCatchConfiguration();
 
             // İşlem bilgisi oluştur
-            TransactionInformation<T> process = new TransactionInformation<T>();
+            Transaction<T> transaction = new Transaction<T>();
 
             try
             {
                 // İşlevi çağır ve dönüş değerini ayarla
-                process.Result = methodFuncT();
+                transaction.Result = methodFuncT();
                 // İşlem başarılı olduğunu işaretle
-                process.IsSuccessful = true;
+                transaction.IsSuccessful = true;
             }
             catch (Exception ex)
             {
                 // Hata durumunda istisna bilgisini ve işlem durumunu ayarla
-                process.Error = ExceptionDetailsBuilder(ex);
-                process.IsSuccessful = false;
+                transaction.Error = ExceptionDetailsBuilder(ex);
+                transaction.IsSuccessful = false;
 
                 // Hata günlüğünü kaydetme ayarı aktifse
                 if (tryCatchConfiguration.LogErrors)
@@ -39,7 +42,7 @@
                 if (tryCatchConfiguration.CustomExceptionHandling) CustomExceptionHandler(ex);
             }
             // İşlem bilgisini döndür
-            return process;
+            return transaction;
         }
 
         /// <summary>
@@ -49,29 +52,29 @@
         /// <param name="methodRequest">Çalıştırılacak işlev.</param>
         /// <param name="tryCatchConfiguration">Try-Catch ayarları (isteğe bağlı).</param>
         /// <returns>İşlem bilgisi.</returns>
-        public static TransactionInformation<T> Run<T>(Func<TransactionInformation<T>> methodRequest, TryCatchConfiguration? tryCatchConfiguration = null)
+        public static Transaction<T> Run<T>(Func<Transaction<T>> methodRequest, TryCatchConfiguration? tryCatchConfiguration = null)
         {
             // Try-Catch ayarlarını varsayılan değerle başlat
             tryCatchConfiguration ??= new TryCatchConfiguration();
 
             // İşlem bilgisi nesnesini tanımla ve başlangıçta null olarak ayarla
-            TransactionInformation<T>? request = null;
+            Transaction<T>? transaction = null;
 
             try
             {
                 // İşlevi çağır ve işlem bilgisini al
-                request = methodRequest();
+                transaction = methodRequest();
                 // İşlem başarılı olduğunu işaretle
-                request.IsSuccessful = true;
+                transaction.IsSuccessful = true;
             }
             catch (Exception ex)
             {
                 // İşlem bilgisi nesnesi henüz oluşturulmamışsa yeni bir nesne oluştur
-                request ??= new TransactionInformation<T>();
+                transaction ??= new Transaction<T>();
 
                 // Hata durumunda istisna bilgisini ve işlem durumunu ayarla
-                request.Error = ExceptionDetailsBuilder(ex);
-                request.IsSuccessful = false;
+                transaction.Error = ExceptionDetailsBuilder(ex);
+                transaction.IsSuccessful = false;
 
                 // Hata günlüğünü kaydetme ayarı aktifse
                 if (tryCatchConfiguration.LogErrors)
@@ -85,7 +88,7 @@
             }
 
             // İşlem bilgisini döndür
-            return request;
+            return transaction;
         }
 
         /// <summary>
@@ -94,26 +97,26 @@
         /// <param name="methodAction">Gerçekleştirilecek işlem.</param>
         /// <param name="tryCatchConfiguration">Try-Catch ayarları (isteğe bağlı).</param>
         /// <returns>İşlem bilgisi.</returns>
-        public static TransactionInformation Run(Action methodAction, TryCatchConfiguration? tryCatchConfiguration = null)
+        public static Transaction Run(Action methodAction, TryCatchConfiguration? tryCatchConfiguration = null)
         {
             // Try-Catch ayarlarını varsayılan değerle başlat
             tryCatchConfiguration ??= new TryCatchConfiguration();
 
             // İşlem bilgisi nesnesini oluştur
-            TransactionInformation request = new TransactionInformation();
+            Transaction transaction = new Transaction();
 
             try
             {
                 // İşlemi gerçekleştir
                 methodAction();
                 // İşlem başarılı olduğunu işaretle
-                request.IsSuccessful = true;
+                transaction.IsSuccessful = true;
             }
             catch (Exception ex)
             {
                 // Hata durumunda işlem bilgisini ve durumunu ayarla
-                request.IsSuccessful = false;
-                request.Error = ExceptionDetailsBuilder(ex);
+                transaction.IsSuccessful = false;
+                transaction.Error = ExceptionDetailsBuilder(ex);
 
                 // Hata günlüğünü kaydetme ayarı aktifse
                 if (tryCatchConfiguration.LogErrors)
@@ -128,7 +131,7 @@
             }
 
             // İşlem bilgisini döndür
-            return request;
+            return transaction;
         }
 
         /// <summary>
@@ -138,61 +141,30 @@
         /// <returns>Oluşturulan özel istisna nesnesi.</returns>
         private static TransactionError ExceptionDetailsBuilder(Exception exception)
         {
-            // İstisna mesajı ve stack trace bilgisini al
-            string exceptionMessage = exception.Message;
-            string? stackTrace = exception.StackTrace;
-
             // Oluşturulacak özel istisna nesnesi
-            TransactionError exceptionDetail = new TransactionError
+            TransactionError transactionError = new TransactionError
             {
-                Message = exceptionMessage,
+                Message = exception.Message,
                 Details = new List<ExceptionDetail>()
             };
 
-            // Stack trace varsa işle
-            if (!string.IsNullOrWhiteSpace(stackTrace))
+            StackTrace stackTrace = new StackTrace(exception, true);
+            int frameCount = stackTrace.FrameCount;
+
+            for (int i = 0; i < frameCount; i++)
             {
-                // Hata bilgilerini saklamak için bir sözlük kullan
-                Dictionary<int, HashSet<string>> errorInformations = new Dictionary<int, HashSet<string>>();
+                StackFrame frame = stackTrace.GetFrame(i)!;
+                MethodBase methodInformation = frame.GetMethod()!;
 
-                // Stack trace satırlarını işle
-                string[] lines = stackTrace.Split(new[] { "\n" }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string line in lines)
+                transactionError.Details.Add(new ExceptionDetail
                 {
-                    string trimmedLine = line.Trim();
-                    int lineIndex = trimmedLine.IndexOf("line");
-                    if (lineIndex != -1)
-                    {
-                        // Hata sınıf adını ve satır numarasını al
-                        string errorClassName = trimmedLine.Substring(0, trimmedLine.IndexOf(" in ")).Trim(' ', '.', ':').Replace("at ", "");
-                        int lineNumberStart = lineIndex + "line".Length;
-                        int lineNumberEnd = trimmedLine.IndexOf(' ', lineNumberStart);
-                        if (lineNumberEnd == -1)
-                            lineNumberEnd = trimmedLine.Length;
-
-                        int errorLineNumber = int.Parse(trimmedLine.Substring(lineNumberStart + 1));
-
-                        // Hata sınıf adını ve satır numarasını sakla
-                        if (!errorInformations.ContainsKey(errorLineNumber))
-                            errorInformations[errorLineNumber] = new HashSet<string>();
-
-                        errorInformations[errorLineNumber].Add(errorClassName);
-                    }
-                }
-
-                // Hata bilgilerini özel istisna detaylarına ekle
-                foreach (var errorDetail in errorInformations)
-                {
-                    exceptionDetail.Details.Add(new ExceptionDetail
-                    {
-                        Row = errorDetail.Key,
-                        Class = string.Join(", ", errorDetail.Value)
-                    });
-                }
+                    Row = frame.GetFileLineNumber(),
+                    Class = methodInformation.ReflectedType?.FullName + "." + methodInformation.Name,
+                });
             }
 
             // Oluşturulan özel istisna nesnesini döndür
-            return exceptionDetail;
+            return transactionError;
         }
 
 

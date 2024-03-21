@@ -12,12 +12,12 @@
 
         public class SemihExcpt : CustomException
         {
-
+            public SemihExcpt(string? message = null) : base(message) { }
         }
 
         public class TalhaExcpt : CustomException
         {
-
+            public TalhaExcpt(string? message = null) : base(message) { }
         }
 
     }
